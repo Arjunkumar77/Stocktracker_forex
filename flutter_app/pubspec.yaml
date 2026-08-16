@@ -1,0 +1,22 @@
+name: gold_forex_tracker
+description: Live XAUUSD & GBPUSD price tracker with a TradingView-style dark UI.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  web_socket_channel: ^2.4.0   # live price stream from the .NET API
+  http: ^1.2.0                 # one-time snapshot fetch on startup
+  fl_chart: ^0.68.0            # live line charts (sparklines + detail chart)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
