@@ -12,15 +12,31 @@ import '../models/price_tick.dart';
 ///    reconnecting automatically if it drops.
 class PriceService {
   // ---------------------------------------------------------------------
-  // IMPORTANT — set this to match where your .NET API is actually running:
-  //   * Android emulator  -> keep '10.0.2.2' (the emulator's alias for
-  //                          "localhost" on your development machine)
-  //   * Physical phone    -> use your computer's LAN IP, e.g. '192.168.1.42'
-  //                          (both devices must be on the same wifi network)
-  // The port must match Properties/launchSettings.json on the API (5000).
+  // SWITCH BETWEEN LOCAL DEV AND YOUR DEPLOYED SERVER HERE.
+  //
+  // Local dev (dotnet run on your PC, phone/emulator on same wifi):
+  //   useProductionServer = false
+  //   devHost = '10.0.2.2' for the Android emulator, or your PC's LAN IP
+  //             (e.g. '192.168.1.42') for a physical phone
+  //
+  // Day-to-day use (API deployed to Render/Railway/etc., works anywhere,
+  // no PC required):
+  //   useProductionServer = true
+  //   prodHost = the domain your host gave you, e.g.
+  //              'gold-forex-api.onrender.com' — no "https://" prefix,
+  //              no trailing slash, no port.
   // ---------------------------------------------------------------------
-  static const String host = '10.0.2.2';
-  static const int port = 5000;
+  static const bool useProductionServer = true;
+
+  static const String prodHost = 'stocktracker-forex.onrender.com';
+
+  static const String devHost = '10.0.2.2';
+  static const int devPort = 5000;
+
+  static String get _httpScheme => useProductionServer ? 'https' : 'http';
+  static String get _wsScheme => useProductionServer ? 'wss' : 'ws';
+  static String get _hostAndPort =>
+      useProductionServer ? prodHost : '$devHost:$devPort';
 
   final _controller = StreamController<PriceTick>.broadcast();
 
@@ -38,8 +54,13 @@ class PriceService {
 
   Future<void> fetchInitialSnapshot() async {
     try {
-      final uri = Uri.parse('http://$host:$port/api/prices');
-      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      final uri = Uri.parse('$_httpScheme://$_hostAndPort/api/prices');
+      // ignore: avoid_print
+      print('[PriceService] fetching snapshot from $uri');
+      final response = await http.get(uri).timeout(const Duration(seconds: 20));
+
+      // ignore: avoid_print
+      print('[PriceService] snapshot response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
@@ -47,25 +68,38 @@ class PriceService {
           _emit(PriceTick.fromJson(item as Map<String, dynamic>));
         }
       }
-    } catch (_) {
-      // Non-fatal — the websocket will populate prices once it connects.
+    } catch (e) {
+      // ignore: avoid_print
+      print('[PriceService] snapshot fetch FAILED: $e');
     }
   }
 
   void connect() {
     if (_disposed) return;
 
-    final uri = Uri.parse('ws://$host:$port/ws/prices');
+    final uri = Uri.parse('$_wsScheme://$_hostAndPort/ws/prices');
+    // ignore: avoid_print
+    print('[PriceService] connecting websocket to $uri');
 
     try {
       _channel = WebSocketChannel.connect(uri);
       _channelSub = _channel!.stream.listen(
         _handleMessage,
-        onError: (_) => _scheduleReconnect(),
-        onDone: _scheduleReconnect,
+        onError: (e) {
+          // ignore: avoid_print
+          print('[PriceService] websocket ERROR: $e');
+          _scheduleReconnect();
+        },
+        onDone: () {
+          // ignore: avoid_print
+          print('[PriceService] websocket closed (onDone)');
+          _scheduleReconnect();
+        },
         cancelOnError: true,
       );
-    } catch (_) {
+    } catch (e) {
+      // ignore: avoid_print
+      print('[PriceService] websocket connect FAILED: $e');
       _scheduleReconnect();
     }
   }
